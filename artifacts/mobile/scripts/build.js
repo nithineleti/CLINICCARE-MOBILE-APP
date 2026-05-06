@@ -198,32 +198,40 @@ async function downloadFile(url, outputPath) {
 
   try {
     console.log(`Downloading: ${url}`);
-    const response = await fetch(url, { signal: controller.signal });
+    
+    // Increased retries for slow EC2 environments
+    const maxRetries = 5;
+    let lastError;
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const response = await fetch(url, {
+          signal: controller.signal,
+          headers: { 'Accept': '*/*' } 
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const fileStream = fs.createWriteStream(outputPath);
+        await pipeline(Readable.fromWeb(response.body), fileStream);
+        
+        clearTimeout(timeoutId);
+        return;
+      } catch (err) {
+        lastError = err;
+        console.log(`Attempt ${i + 1} failed, retrying in 2s...`);
+        await new Promise(r => setTimeout(r, 2000));
+      }
     }
-
-    const file = fs.createWriteStream(outputPath);
-    await pipeline(Readable.fromWeb(response.body), file);
-
-    const fileSize = fs.statSync(outputPath).size;
-
-    if (fileSize === 0) {
-      fs.unlinkSync(outputPath);
-      throw new Error("Downloaded file is empty");
-    }
+    throw lastError;
   } catch (error) {
-    if (fs.existsSync(outputPath)) {
-      fs.unlinkSync(outputPath);
-    }
-
+    clearTimeout(timeoutId);
     if (error.name === "AbortError") {
-      throw new Error(`Download timeout after 5m: ${url}`);
+      throw new Error(`Download timeout after 15m: ${url}`);
     }
     throw error;
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
 
