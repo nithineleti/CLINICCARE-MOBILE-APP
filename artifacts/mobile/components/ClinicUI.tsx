@@ -14,6 +14,16 @@ import {
   type PressableProps,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Animated, { 
+  useSharedValue, 
+  withRepeat, 
+  withTiming, 
+  withSequence, 
+  useAnimatedStyle, 
+  withDelay,
+  interpolate,
+  useDerivedValue
+} from 'react-native-reanimated';
 
 import { useColors } from "@/hooks/useColors";
 import { useClinic, type UserRole } from "@/lib/ClinicContext";
@@ -27,8 +37,15 @@ export function Screen({
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const top = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top + 14;
-  const bottom = Platform.OS === "web" ? 118 : insets.bottom + 104;
+  const top = Platform.OS === "web" ? Math.max(insets.top, 60) : insets.top + 14;
+  const bottom = Platform.OS === "web" ? 100 : insets.bottom + 104;
+
+  const content = (
+    <View style={{ flex: 1, position: 'relative' }}>
+      <BackgroundSlides />
+      {children}
+    </View>
+  );
 
   if (!scroll) {
     return (
@@ -42,7 +59,7 @@ export function Screen({
           },
         ]}
       >
-        {children}
+        {content}
       </View>
     );
   }
@@ -56,8 +73,42 @@ export function Screen({
       ]}
       showsVerticalScrollIndicator={false}
     >
-      {children}
+      {content}
     </ScrollView>
+  );
+}
+
+function BackgroundSlides() {
+  const colors = useColors();
+  const opacity = useSharedValue(0.02); // Very low fade
+
+  React.useEffect(() => {
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(0.06, { duration: 5000 }),
+        withTiming(0.02, { duration: 5000 })
+      ),
+      -1,
+      true
+    );
+  }, []);
+
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Animated.View 
+        style={[
+          StyleSheet.absoluteFill, 
+          { 
+            backgroundColor: colors.primary,
+            opacity: opacity 
+          }
+        ]} 
+      />
+      <View style={[StyleSheet.absoluteFill, { opacity: 0.03 }]}>
+        <View style={styles.bgLine} />
+        <View style={styles.bgLine2} />
+      </View>
+    </View>
   );
 }
 
@@ -95,27 +146,54 @@ export function HeroBanner({
 }) {
   const colors = useColors();
   return (
-    <View style={[styles.hero, { backgroundColor: colors.primary }]}>
-      <View style={styles.heroBlobOne} />
-      <View style={styles.heroBlobTwo} />
-      <View style={styles.heroTopRow}>
-        <View>
-          <Text style={styles.heroEyebrow}>{eyebrow}</Text>
-          <Text style={styles.heroTitle}>{title}</Text>
-          <Text style={styles.heroSubtitle}>{subtitle}</Text>
-        </View>
-        <View style={styles.heroIcons}>
-          <View style={styles.heroIconBtn}>
-            <Feather name="bell" size={18} color="#FFFFFF" />
-          </View>
-          <View style={styles.heroIconBtn}>
-            <Feather name="help-circle" size={18} color="#FFFFFF" />
-          </View>
-        </View>
+    <View style={[styles.hero, { backgroundColor: colors.primary, overflow: 'hidden' }]}>
+      <AnimatedBlob 
+        style={[styles.heroBlobOne, { backgroundColor: 'rgba(255,255,255,0.1)' }]} 
+        duration={4000}
+      />
+      <AnimatedBlob 
+        style={[styles.heroBlobTwo, { backgroundColor: 'rgba(255,255,255,0.08)' }]} 
+        duration={6000}
+        delay={1000}
+      />
+      <View style={{ position: 'relative', zIndex: 10 }}>
+        <Text style={styles.heroEyebrow}>{eyebrow}</Text>
+        <Text style={styles.heroTitle}>{title}</Text>
+        <Text style={styles.heroSubtitle}>{subtitle}</Text>
+        {children && <View style={styles.heroChildren}>{children}</View>}
       </View>
-      {children}
     </View>
   );
+}
+
+function AnimatedBlob({ style, duration, delay = 0 }: { style: any, duration: number, delay?: number }) {
+  const scale = useSharedValue(1);
+  const rotation = useSharedValue(0);
+
+  React.useEffect(() => {
+    scale.value = withDelay(delay, withRepeat(
+      withSequence(
+        withTiming(1.2, { duration: duration }),
+        withTiming(1, { duration: duration })
+      ),
+      -1,
+      true
+    ));
+    rotation.value = withRepeat(
+      withTiming(360, { duration: duration * 4 }),
+      -1,
+      false
+    );
+  }, [delay, duration, rotation, scale]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { scale: scale.value },
+      { rotate: `${rotation.value}deg` }
+    ]
+  }));
+
+  return <Animated.View style={[style, animatedStyle]} />;
 }
 
 export function SearchBar({
@@ -193,21 +271,33 @@ export function LoginScreen() {
   );
 }
 
-export function Card({ children }: { children: React.ReactNode }) {
+export function Card({
+  children,
+  style,
+  onPress,
+}: {
+  children: React.ReactNode;
+  style?: any;
+  onPress?: () => void;
+}) {
   const colors = useColors();
   return (
-    <View
-      style={[
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
         styles.card,
         {
           backgroundColor: colors.card,
           borderColor: colors.border,
-          borderRadius: colors.radius + 14,
+          transform: [{ scale: pressed && onPress ? 0.98 : 1 }],
+          opacity: pressed && onPress ? 0.9 : 1,
+          boxShadow: Platform.OS === "web" ? '0px 4px 6px -1px rgba(0, 0, 0, 0.1), 0px 2px 4px -2px rgba(0, 0, 0, 0.1)' : undefined,
         },
+        style,
       ]}
     >
       {children}
-    </View>
+    </Pressable>
   );
 }
 
@@ -296,49 +386,60 @@ export function Pill({
 }
 
 export function ActionButton({
-  title,
+  label,
   icon,
-  variant = "primary",
   onPress,
-  disabled,
-}: PressableProps & {
-  title: string;
+  variant = 'primary',
+  isLoading = false,
+  style,
+}: {
+  label: string;
   icon?: keyof typeof Feather.glyphMap;
-  variant?: "primary" | "secondary";
+  onPress?: () => void;
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost';
+  isLoading?: boolean;
+  style?: any;
 }) {
   const colors = useColors();
-  const isPrimary = variant === "primary";
+  const getVariantStyles = () => {
+    switch (variant) {
+      case 'secondary':
+        return { bg: colors.secondary, text: colors.secondaryForeground, border: 'transparent' };
+      case 'outline':
+        return { bg: 'transparent', text: colors.primary, border: colors.primary };
+      case 'ghost':
+        return { bg: 'transparent', text: colors.mutedForeground, border: 'transparent' };
+      default:
+        return { bg: colors.primary, text: colors.primaryForeground, border: 'transparent' };
+    }
+  };
+
+  const v = getVariantStyles();
+
   return (
     <Pressable
-      onPress={(event) => {
-        if (!disabled) void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        onPress?.(event);
-      }}
-      disabled={disabled}
+      onPress={onPress}
+      disabled={isLoading}
       style={({ pressed }) => [
-        styles.button,
+        styles.actionButton,
         {
-          backgroundColor: isPrimary ? colors.primary : colors.secondary,
-          opacity: disabled ? 0.5 : pressed ? 0.78 : 1,
-          transform: [{ scale: pressed && !disabled ? 0.98 : 1 }],
+          backgroundColor: v.bg,
+          borderColor: v.border,
+          borderWidth: v.border !== 'transparent' ? 1 : 0,
+          transform: [{ scale: pressed ? 0.96 : 1 }],
+          opacity: pressed ? 0.8 : 1,
         },
+        style,
       ]}
     >
-      {icon ? (
-        <Feather
-          name={icon}
-          size={17}
-          color={isPrimary ? colors.primaryForeground : colors.secondaryForeground}
-        />
-      ) : null}
-      <Text
-        style={[
-          styles.buttonText,
-          { color: isPrimary ? colors.primaryForeground : colors.secondaryForeground },
-        ]}
-      >
-        {title}
-      </Text>
+      {isLoading ? (
+        <ActivityIndicator size="small" color={v.text} />
+      ) : (
+        <>
+          {icon && <Feather name={icon} size={18} color={v.text} style={{ marginRight: 8 }} />}
+          <Text style={[styles.actionButtonText, { color: v.text }]}>{label}</Text>
+        </>
+      )}
     </Pressable>
   );
 }
@@ -397,14 +498,21 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   card: {
+    padding: 18,
+    borderRadius: 20,
     borderWidth: 1,
-    padding: 15,
-    gap: 12,
-    shadowColor: "#172033",
-    shadowOpacity: 0.04,
-    shadowOffset: { width: 0, height: 5 },
-    shadowRadius: 10,
-    elevation: 1,
+    marginBottom: 16,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   loginCard: {
     alignItems: "center",
@@ -477,6 +585,19 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 12,
   },
+  actionButton: {
+    height: 52,
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    marginVertical: 6,
+  },
+  actionButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
   button: {
     alignItems: "center",
     borderRadius: 14,
@@ -506,55 +627,53 @@ const styles = StyleSheet.create({
     fontSize: 17,
   },
   hero: {
-    borderBottomLeftRadius: 28,
-    borderBottomRightRadius: 28,
-    gap: 16,
-    marginHorizontal: -20,
-    marginTop: -20,
-    overflow: "hidden",
-    paddingBottom: 28,
-    paddingHorizontal: 20,
-    paddingTop: 28,
+    padding: 24,
+    borderRadius: 24,
+    marginBottom: 24,
+    position: 'relative',
+  },
+  heroEyebrow: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  heroTitle: {
+    color: "#FFFFFF",
+    fontSize: 26,
+    fontWeight: "800",
+    marginTop: 6,
+  },
+  heroSubtitle: {
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 14,
+    fontWeight: "500",
+    marginTop: 4,
+  },
+  heroChildren: {
+    marginTop: 20,
   },
   heroBlobOne: {
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderRadius: 200,
-    height: 220,
-    position: "absolute",
-    right: -60,
-    top: -90,
-    width: 220,
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    top: -50,
+    right: -50,
   },
   heroBlobTwo: {
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderRadius: 200,
-    bottom: -80,
-    height: 200,
-    left: -60,
-    position: "absolute",
-    width: 200,
+    position: 'absolute',
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    bottom: -30,
+    left: -30,
   },
   heroTopRow: {
     alignItems: "flex-start",
     flexDirection: "row",
     justifyContent: "space-between",
-  },
-  heroEyebrow: {
-    color: "rgba(255,255,255,0.85)",
-    fontSize: 13,
-    fontWeight: "500",
-  },
-  heroTitle: {
-    color: "#FFFFFF",
-    fontSize: 22,
-    fontWeight: "700",
-    marginTop: 4,
-  },
-  heroSubtitle: {
-    color: "rgba(255,255,255,0.78)",
-    fontSize: 13,
-    fontWeight: "500",
-    marginTop: 4,
   },
   heroIcons: {
     flexDirection: "row",
@@ -581,5 +700,21 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     fontWeight: "500",
+  },
+  bgLine: {
+    position: 'absolute',
+    top: '20%',
+    width: '120%',
+    height: 1,
+    backgroundColor: '#000',
+    transform: [{ rotate: '-15deg' }],
+  },
+  bgLine2: {
+    position: 'absolute',
+    top: '60%',
+    width: '120%',
+    height: 1,
+    backgroundColor: '#000',
+    transform: [{ rotate: '15deg' }],
   },
 });

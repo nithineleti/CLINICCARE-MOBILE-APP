@@ -273,10 +273,10 @@ export function ClinicProvider({ children }: { children: React.ReactNode }) {
       userRole,
       userName:
         userRole === "doctor"
-          ? "Doctor User"
+          ? doctors[0].name
           : userRole === "patient"
-            ? "Patient User"
-            : "Admin User",
+            ? patients[0].name
+            : "Clinic Admin",
       doctors,
       patients,
       appointments,
